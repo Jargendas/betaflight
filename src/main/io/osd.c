@@ -449,6 +449,8 @@ bool osdWarnGetState(uint8_t warningIndex)
     return osdConfig()->enabledWarnings & (1 << warningIndex);
 }
 
+//int artificialHorizonPrevious[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
 static bool osdDrawSingleElement(uint8_t item)
 {
     if (!VISIBLE(osdConfig()->item_pos[item]) || BLINK(item)) {
@@ -679,8 +681,14 @@ static bool osdDrawSingleElement(uint8_t item)
 
             for (int x = -4; x <= 4; x++) {
                 const int y = ((-rollAngle * x) / 64) - pitchAngle;
+                /*const int previousY = artificialHorizonPrevious[x+4];
+                if(y / AH_SYMBOL_COUNT != previousY) {
+                    displayWriteChar(osdDisplayPort, elemPosX + x, elemPosY + previousY, SYM_BLANK);
+                }*/
                 if (y >= 0 && y <= 81) {
-                    displayWriteChar(osdDisplayPort, elemPosX + x, elemPosY + (y / AH_SYMBOL_COUNT), (SYM_AH_BAR9_0 + (y % AH_SYMBOL_COUNT)));
+                    if(!displayWriteChar(osdDisplayPort, elemPosX + x, elemPosY + (y / AH_SYMBOL_COUNT), (SYM_AH_BAR9_0 + (y % AH_SYMBOL_COUNT))))
+                        return false;
+                    //artificialHorizonPrevious[x+4] = y / AH_SYMBOL_COUNT;
                 }
             }
 
@@ -693,8 +701,10 @@ static bool osdDrawSingleElement(uint8_t item)
             const int8_t hudwidth = AH_SIDEBAR_WIDTH_POS;
             const int8_t hudheight = AH_SIDEBAR_HEIGHT_POS;
             for (int y = -hudheight; y <= hudheight; y++) {
-                displayWriteChar(osdDisplayPort, elemPosX - hudwidth, elemPosY + y, SYM_AH_DECORATION);
-                displayWriteChar(osdDisplayPort, elemPosX + hudwidth, elemPosY + y, SYM_AH_DECORATION);
+                if(!displayWriteChar(osdDisplayPort, elemPosX - hudwidth, elemPosY + y, SYM_AH_DECORATION))
+                    return false;
+                if(!displayWriteChar(osdDisplayPort, elemPosX + hudwidth, elemPosY + y, SYM_AH_DECORATION))
+                    return false;
             }
 
             // AH level indicators
@@ -992,59 +1002,117 @@ static bool osdDrawSingleElement(uint8_t item)
         return false;
     }
 
-    displayWrite(osdDisplayPort, elemPosX, elemPosY, buff);
+    if(displayWrite(osdDisplayPort, elemPosX, elemPosY, buff))
+        return true;
 
-    return true;
+    return false;
 }
 
-static void osdDrawElements(void)
+static int osdDrawElements(void)
 {
-    displayClearScreen(osdDisplayPort);
 
     // Hide OSD when OSDSW mode is active
     if (IS_RC_MODE_ACTIVE(BOXOSD)) {
+        displayClearScreen(osdDisplayPort);
         return;
     }
 
-    if (sensors(SENSOR_ACC)) {
-        osdDrawSingleElement(OSD_ARTIFICIAL_HORIZON);
-        osdDrawSingleElement(OSD_G_FORCE);
+    static int position = 0;
+    bool result = true;
+
+    switch(position) {
+
+        case 0: {
+            displayClearScreen(osdDisplayPort);
+
+            if (sensors(SENSOR_ACC)) {
+                result &= osdDrawSingleElement(OSD_ARTIFICIAL_HORIZON);
+                result &= osdDrawSingleElement(OSD_G_FORCE);
+            }
+
+            if(!result)
+                return position;
+            else
+                position++;
+            
+        }
+
+        //fall through
+        case 1: {
+
+            #ifdef USE_GPS
+                if (sensors(SENSOR_GPS)) {
+                    result &= osdDrawSingleElement(OSD_GPS_SATS);
+                    result &= osdDrawSingleElement(OSD_GPS_SPEED);
+                    result &= osdDrawSingleElement(OSD_GPS_LAT);
+                    result &= osdDrawSingleElement(OSD_GPS_LON);
+                    result &= osdDrawSingleElement(OSD_HOME_DIST);
+                    result &= osdDrawSingleElement(OSD_HOME_DIR);
+                }
+                if(!result)
+                    return position;
+                else
+            #endif
+            position++;
+
+        }
+
+        //fall through
+        case 2: {
+            #ifdef USE_ESC_SENSOR
+                if (feature(FEATURE_ESC_SENSOR)) {
+                    result &= osdDrawSingleElement(OSD_ESC_TMP);
+                    result &= osdDrawSingleElement(OSD_ESC_RPM);
+                }
+                if(!result)
+                    return position;
+                else
+            #endif
+            position++;
+        }
+
+        //fall through
+        case 3: {
+            #ifdef USE_RTC_TIME
+                if(!osdDrawSingleElement(OSD_RTC_DATETIME))
+                    return position;
+                else
+            #endif
+            position++;
+        }
+
+        //fall through
+        case 4: {
+            #ifdef USE_OSD_ADJUSTMENTS
+                if(!osdDrawSingleElement(OSD_ADJUSTMENT_RANGE))
+                    return;
+                else
+            #endif
+            position++;
+        }
+
+        //fall through
+        case 5: {
+            #ifdef USE_ADC_INTERNAL
+                if(!osdDrawSingleElement(OSD_CORE_TEMPERATURE))
+                    return position;
+                else
+            #endif
+            position++;
+        }
+
+        //fall through
+        default: {
+            for (unsigned i = position; i < sizeof(osdElementDisplayOrder); i++) {
+                if(!osdDrawSingleElement(osdElementDisplayOrder[i-6]))
+                    return position;
+                else
+                    position++;
+            }
+            position = 0;
+        }
+        return 0;
     }
-
-
-    for (unsigned i = 0; i < sizeof(osdElementDisplayOrder); i++) {
-        osdDrawSingleElement(osdElementDisplayOrder[i]);
-    }
-
-#ifdef USE_GPS
-    if (sensors(SENSOR_GPS)) {
-        osdDrawSingleElement(OSD_GPS_SATS);
-        osdDrawSingleElement(OSD_GPS_SPEED);
-        osdDrawSingleElement(OSD_GPS_LAT);
-        osdDrawSingleElement(OSD_GPS_LON);
-        osdDrawSingleElement(OSD_HOME_DIST);
-        osdDrawSingleElement(OSD_HOME_DIR);
-    }
-#endif // GPS
-
-#ifdef USE_ESC_SENSOR
-    if (feature(FEATURE_ESC_SENSOR)) {
-        osdDrawSingleElement(OSD_ESC_TMP);
-        osdDrawSingleElement(OSD_ESC_RPM);
-    }
-#endif
-
-#ifdef USE_RTC_TIME
-    osdDrawSingleElement(OSD_RTC_DATETIME);
-#endif
-
-#ifdef USE_OSD_ADJUSTMENTS
-    osdDrawSingleElement(OSD_ADJUSTMENT_RANGE);
-#endif
-
-#ifdef USE_ADC_INTERNAL
-    osdDrawSingleElement(OSD_CORE_TEMPERATURE);
-#endif
 }
 
 void pgResetFn_osdConfig(osdConfig_t *osdConfig)
@@ -1100,10 +1168,12 @@ static void osdDrawLogo(int x, int y)
     // display logo and help
     int fontOffset = 160;
     for (int row = 0; row < 4; row++) {
+        char rowChars[24];
         for (int column = 0; column < 24; column++) {
             if (fontOffset <= SYM_END_OF_FONT)
-                displayWriteChar(osdDisplayPort, x + column, y + row, fontOffset++);
+                rowChars[column] = fontOffset++;
         }
+        while(!displayWrite(osdDisplayPort, x, y + row, rowChars));
     }
 }
 
@@ -1124,17 +1194,19 @@ void osdInit(displayPort_t *osdDisplayPortToUse)
 
     memset(blinkBits, 0, sizeof(blinkBits));
 
+    delay(500);
+
     displayClearScreen(osdDisplayPort);
 
     osdDrawLogo(3, 1);
 
     char string_buffer[30];
     tfp_sprintf(string_buffer, "V%s", FC_VERSION_STRING);
-    displayWrite(osdDisplayPort, 20, 6, string_buffer);
+    while(!displayWrite(osdDisplayPort, 20, 6, string_buffer));
 #ifdef USE_CMS
-    displayWrite(osdDisplayPort, 7, 8,  CMS_STARTUP_HELP_TEXT1);
-    displayWrite(osdDisplayPort, 11, 9, CMS_STARTUP_HELP_TEXT2);
-    displayWrite(osdDisplayPort, 11, 10, CMS_STARTUP_HELP_TEXT3);
+    while(!displayWrite(osdDisplayPort, 7, 8,  CMS_STARTUP_HELP_TEXT1));
+    while(!displayWrite(osdDisplayPort, 11, 9, CMS_STARTUP_HELP_TEXT2));
+    while(!displayWrite(osdDisplayPort, 11, 10, CMS_STARTUP_HELP_TEXT3));
 #endif
 
 #ifdef USE_RTC_TIME
@@ -1524,6 +1596,7 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
             }
         }
     }
+
     lastTimeUs = currentTimeUs;
 
     if (resumeRefreshAt) {
@@ -1564,6 +1637,10 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
     lastArmState = ARMING_FLAG(ARMED);
 }
 
+STATIC_UNIT_TESTED void osdRefreshPriorized(timeUs_t currentTimeUs) {
+    UNUSED(currentTimeUs);
+}
+
 /*
  * Called periodically by the scheduler
  */
@@ -1594,18 +1671,21 @@ void osdUpdate(timeUs_t currentTimeUs)
     // redraw values in buffer
 #ifdef USE_MAX7456
 #define DRAW_FREQ_DENOM 5
+#define DRAW_FREQ_PRIO_DENOM 1
 #else
 #define DRAW_FREQ_DENOM 10 // MWOSD @ 115200 baud (
+#define DRAW_FREQ_PRIO_DENOM 2
 #endif
 #define STATS_FREQ_DENOM    50
 
     if (counter % DRAW_FREQ_DENOM == 0) {
         osdRefresh(currentTimeUs);
         showVisualBeeper = false;
-    } else {
-        // rest of time redraw screen 10 chars per idle so it doesn't lock the main idle
-        displayDrawScreen(osdDisplayPort);
+    } else if (counter % DRAW_FREQ_PRIO_DENOM == 0) {
+        osdRefreshPriorized(currentTimeUs);
     }
+
+    displayDrawScreen(osdDisplayPort);
     ++counter;
 
 #ifdef USE_CMS

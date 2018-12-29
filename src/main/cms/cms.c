@@ -737,11 +737,11 @@ long cmsMenuExit(displayPort_t *pDisplay, const void *ptr)
 
     cmsInMenu = false;
 
+    displayClearScreen(pDisplay);
     displayRelease(pDisplay);
     currentCtx.menu = NULL;
 
     if (exitType == CMS_EXIT_SAVEREBOOT) {
-        displayClearScreen(pDisplay);
         displayWrite(pDisplay, 5, 3, "REBOOTING...");
 
         displayResync(pDisplay); // Was max7456RefreshAll(); why at this timing?
@@ -1097,7 +1097,8 @@ void cmsUpdate(uint32_t currentTimeUs)
             }
         }
 
-        cmsDrawMenu(pCurrentDisplay, currentTimeUs);
+        if(cmsInMenu)
+            cmsDrawMenu(pCurrentDisplay, currentTimeUs);
 
         if (currentTimeMs > lastCmsHeartBeatMs + 500) {
             // Heart beat for external CMS display device @ 500msec

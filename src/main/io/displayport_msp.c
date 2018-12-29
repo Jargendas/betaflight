@@ -124,11 +124,15 @@ static int writeString(displayPort_t *displayPort, uint8_t col, uint8_t row, con
 
 static int writeChar(displayPort_t *displayPort, uint8_t col, uint8_t row, uint8_t c)
 {
-    char buf[2];
+    uint8_t buf[5];
 
-    buf[0] = c;
-    buf[1] = 0;
-    return writeString(displayPort, col, row, buf); //!!TODO - check if there is a direct MSP command to do this
+    buf[0] = 3;
+    buf[1] = row;
+    buf[2] = col;
+    buf[3] = 0;
+    buf[4] = c;
+
+    return output(displayPort, MSP_DISPLAYPORT, buf, 5);
 }
 
 static bool isTransferInProgress(const displayPort_t *displayPort)

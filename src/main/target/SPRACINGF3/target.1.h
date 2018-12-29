@@ -38,13 +38,14 @@
 //#undef USE_GYRO_OVERFLOW_CHECK
 //#undef USE_GYRO_LPF2
 
-#if !defined(IRCSYNERGYF3)
+#if !(defined(ZCOREF3) || defined(FLIP32F3OSD) || defined(IRCSYNERGYF3))
 //#undef USE_ITERM_RELAX
 //#undef USE_RC_SMOOTHING_FILTER
 
 //#undef USE_MSP_DISPLAYPORT
 //#undef USE_MSP_OVER_TELEMETRY
 
+#undef USE_LED_STRIP
 //#undef USE_HUFFMAN
 //#undef USE_PINIO
 //#undef USE_PINIOBOX
@@ -52,28 +53,23 @@
 //#undef USE_TELEMETRY_HOTT
 //#undef USE_TELEMETRY_MAVLINK
 //#undef USE_TELEMETRY_LTM
-
-//#undef USE_SERIALRX_XBUS
-#undef USE_SERIALRX_SUMH
-//#undef USE_PWM
-
-#undef USE_BOARD_INFO
-#undef USE_EXTENDED_CMS_MENUS
-#endif
-
 #if defined(HGLRCF3V4)
 #define USE_TELEMETRY
 #define USE_TELEMETRY_IBUS
-#define USE_EXTENDED_CMS_MENUS
 #endif
 
+#undef USE_SERIALRX_XBUS
+#undef USE_SERIALRX_SUMH
+#undef USE_PWM
+
+#undef USE_EXTENDED_CMS_MENUS
+#endif
+
+#undef USE_BOARD_INFO
 #undef USE_RTC_TIME
+
 #undef USE_RX_MSP
 #undef USE_ESC_SENSOR_INFO
-
-#if defined(IRCSYNERGYF3)
-#undef USE_LED_STRIP
-#endif
 
 #if defined(ZCOREF3)
 
@@ -90,7 +86,8 @@
 #endif
 
 #define USE_EXTI
-#define MPU_INT_EXTI            PC13
+#define USE_GYRO_EXTI
+#define GYRO_1_EXTI_PIN          PC13
 #define USE_MPU_DATA_READY_SIGNAL
 #define ENSURE_MPU_DATA_READY_IS_LOW
 
@@ -103,21 +100,19 @@
 
 #if defined(FLIP32F3OSD)
 #define USE_GYRO_MPU6500
-#define GYRO_MPU6500_ALIGN CW270_DEG
+#define GYRO_1_ALIGN            CW270_DEG
 
 #define USE_ACC_MPU6500
-#define ACC_MPU6500_ALIGN CW270_DEG
+#define ACC_1_ALIGN             CW270_DEG
 
 #elif defined(ZCOREF3)
-#define USE_GYRO
 #define USE_GYRO_MPU6500
 #define USE_GYRO_SPI_MPU6500
-#define GYRO_MPU6500_ALIGN      CW180_DEG
+#define GYRO_1_ALIGN            CW180_DEG
 
-#define USE_ACC
 #define USE_ACC_MPU6500
 #define USE_ACC_SPI_MPU6500
-#define ACC_MPU6500_ALIGN       CW180_DEG
+#define ACC_1_ALIGN             CW180_DEG
 
 #define USE_SPI_DEVICE_1 // PB9,3,4,5 on AF5 SPI1 (MPU)
 
@@ -126,26 +121,24 @@
 #define SPI1_MISO_PIN           PB4
 #define SPI1_MOSI_PIN           PB5
 
-#define MPU6500_CS_PIN          PB9
-#define MPU6500_SPI_INSTANCE    SPI1
+#define GYRO_1_CS_PIN           PB9
+#define GYRO_1_SPI_INSTANCE     SPI1
 
 #elif defined(IRCSYNERGYF3)
-#define USE_GYRO
 #define USE_GYRO_SPI_MPU6000
-#define GYRO_MPU6000_ALIGN      CW270_DEG
+#define GYRO_1_ALIGN            CW270_DEG
 
-#define USE_ACC
 #define USE_ACC_SPI_MPU6000
-#define ACC_MPU6000_ALIGN       CW270_DEG
+#define ACC_1_ALIGN             CW270_DEG
 
-#define MPU6000_CS_PIN           PB12
-#define MPU6000_SPI_INSTANCE     SPI2
+#define GYRO_1_CS_PIN           PB12
+#define GYRO_1_SPI_INSTANCE     SPI2
 #else
 #define USE_GYRO_MPU6050
-#define GYRO_MPU6050_ALIGN      CW270_DEG
+#define GYRO_1_ALIGN            CW270_DEG
 
 #define USE_ACC_MPU6050
-#define ACC_MPU6050_ALIGN       CW270_DEG
+#define ACC_1_ALIGN             CW270_DEG
 #endif
 
 #if defined(FLIP32F3OSD)
@@ -157,15 +150,6 @@
 #elif defined(ZCOREF3)
 #define USE_MAG_DATA_READY_SIGNAL
 #define ENSURE_MAG_DATA_READY_IS_HIGH
-
-#elif defined(HGLRCF3V4)
-//#define USE_RANGEFINDER
-#define USE_RANGEFINDER_HCSR04
-#define RANGEFINDER_HCSR04_TRIGGER_PIN       PB0
-#define RANGEFINDER_HCSR04_ECHO_PIN          PB1
-
-#define USE_BARO_MS5611
-#define USE_BARO_BMP085
 
 #else //SPRACINGF3
 
@@ -243,7 +227,6 @@
 #define RSSI_ADC_PIN            PB2
 
 #define USE_OSD
-#define USE_MSP_DISPLAYPORT
 #define USE_OSD_OVER_MSP_DISPLAYPORT
 #define USE_SLOW_MSP_DISPLAYPORT_RATE_WHEN_UNARMED
 #endif
