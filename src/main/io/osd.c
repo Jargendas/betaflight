@@ -449,8 +449,6 @@ bool osdWarnGetState(uint8_t warningIndex)
     return osdConfig()->enabledWarnings & (1 << warningIndex);
 }
 
-//int artificialHorizonPrevious[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
-
 static bool osdDrawSingleElement(uint8_t item)
 {
     if (!VISIBLE(osdConfig()->item_pos[item]) || BLINK(item)) {
@@ -679,16 +677,18 @@ static bool osdDrawSingleElement(uint8_t item)
             }
             pitchAngle -= 41; // 41 = 4 * AH_SYMBOL_COUNT + 5
 
+            static int artificialHorizonPrevious[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+
             for (int x = -4; x <= 4; x++) {
                 const int y = ((-rollAngle * x) / 64) - pitchAngle;
-                /*const int previousY = artificialHorizonPrevious[x+4];
+                const int previousY = artificialHorizonPrevious[x+4];
                 if(y / AH_SYMBOL_COUNT != previousY) {
                     displayWriteChar(osdDisplayPort, elemPosX + x, elemPosY + previousY, SYM_BLANK);
-                }*/
+                }
                 if (y >= 0 && y <= 81) {
                     if(!displayWriteChar(osdDisplayPort, elemPosX + x, elemPosY + (y / AH_SYMBOL_COUNT), (SYM_AH_BAR9_0 + (y % AH_SYMBOL_COUNT))))
                         return false;
-                    //artificialHorizonPrevious[x+4] = y / AH_SYMBOL_COUNT;
+                    artificialHorizonPrevious[x+4] = y / AH_SYMBOL_COUNT;
                 }
             }
 
@@ -1008,14 +1008,8 @@ static bool osdDrawSingleElement(uint8_t item)
     return false;
 }
 
-static int osdDrawElements(void)
+void osdDrawElements(void)
 {
-
-    // Hide OSD when OSDSW mode is active
-    if (IS_RC_MODE_ACTIVE(BOXOSD)) {
-        displayClearScreen(osdDisplayPort);
-        return;
-    }
 
     static int position = 0;
     bool result = true;
@@ -1023,17 +1017,9 @@ static int osdDrawElements(void)
     switch(position) {
 
         case 0: {
+
             displayClearScreen(osdDisplayPort);
-
-            if (sensors(SENSOR_ACC)) {
-                result &= osdDrawSingleElement(OSD_ARTIFICIAL_HORIZON);
-                result &= osdDrawSingleElement(OSD_G_FORCE);
-            }
-
-            if(!result)
-                return position;
-            else
-                position++;
+            position++;
             
         }
 
@@ -1050,7 +1036,7 @@ static int osdDrawElements(void)
                     result &= osdDrawSingleElement(OSD_HOME_DIR);
                 }
                 if(!result)
-                    return position;
+                    return;
                 else
             #endif
             position++;
@@ -1065,7 +1051,7 @@ static int osdDrawElements(void)
                     result &= osdDrawSingleElement(OSD_ESC_RPM);
                 }
                 if(!result)
-                    return position;
+                    return;
                 else
             #endif
             position++;
@@ -1095,7 +1081,7 @@ static int osdDrawElements(void)
         case 5: {
             #ifdef USE_ADC_INTERNAL
                 if(!osdDrawSingleElement(OSD_CORE_TEMPERATURE))
-                    return position;
+                    return;
                 else
             #endif
             position++;
@@ -1103,15 +1089,22 @@ static int osdDrawElements(void)
 
         //fall through
         default: {
-            for (unsigned i = position; i < sizeof(osdElementDisplayOrder); i++) {
-                if(!osdDrawSingleElement(osdElementDisplayOrder[i-6]))
-                    return position;
+            for (unsigned i = position-6; i < sizeof(osdElementDisplayOrder); i++) {
+                if(!osdDrawSingleElement(osdElementDisplayOrder[i]))
+                    return;
                 else
                     position++;
             }
             position = 0;
         }
-        return 0;
+    }
+}
+
+void osdDrawElementsPriorized() {
+
+    if (sensors(SENSOR_ACC)) {
+        osdDrawSingleElement(OSD_ARTIFICIAL_HORIZON);
+        osdDrawSingleElement(OSD_G_FORCE);
     }
 }
 
@@ -1542,15 +1535,15 @@ static void osdShowArmed(void)
     displayWrite(osdDisplayPort, 12, 7, "ARMED");
 }
 
-STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
-{
+bool osdStatsEnabled = false;
+void osdHandleCMS(timeUs_t currentTimeUs) {
+
     static timeUs_t lastTimeUs = 0;
-    static bool osdStatsEnabled = false;
     static bool osdStatsVisible = false;
     static timeUs_t osdStatsRefreshTimeUs;
     static uint16_t endBatteryVoltage;
 
-    // detect arm/disarm
+    // detect arm/disarm to toggle stats
     if (armState != ARMING_FLAG(ARMED)) {
         if (ARMING_FLAG(ARMED)) {
             osdStatsEnabled = false;
@@ -1575,7 +1568,7 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
         timeUs_t deltaT = currentTimeUs - lastTimeUs;
         flyTime += deltaT;
         stats.armed_time += deltaT;
-    } else if (osdStatsEnabled) {  // handle showing/hiding stats based on OSD disable switch position
+    } else if (osdStatsEnabled) {  // handle showing/hiding stats
         if (displayIsGrabbed(osdDisplayPort)) {
             osdStatsEnabled = false;
             resumeRefreshAt = 0;
@@ -1598,7 +1591,13 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
     }
 
     lastTimeUs = currentTimeUs;
+    lastArmState = ARMING_FLAG(ARMED); 
+}
 
+STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
+{
+
+    //Wait until resumeRefreshAt is 0, send heartbeats in the meantime
     if (resumeRefreshAt) {
         if (cmp32(currentTimeUs, resumeRefreshAt) < 0) {
             // in timeout period, check sticks for activity to resume display.
@@ -1608,7 +1607,6 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
             displayHeartbeat(osdDisplayPort);
             return;
         } else {
-            displayClearScreen(osdDisplayPort);
             resumeRefreshAt = 0;
             osdStatsEnabled = false;
             stats.armed_time = 0;
@@ -1634,11 +1632,6 @@ STATIC_UNIT_TESTED void osdRefresh(timeUs_t currentTimeUs)
 #endif
     }
 #endif
-    lastArmState = ARMING_FLAG(ARMED);
-}
-
-STATIC_UNIT_TESTED void osdRefreshPriorized(timeUs_t currentTimeUs) {
-    UNUSED(currentTimeUs);
 }
 
 /*
@@ -1678,15 +1671,25 @@ void osdUpdate(timeUs_t currentTimeUs)
 #endif
 #define STATS_FREQ_DENOM    50
 
-    if (counter % DRAW_FREQ_DENOM == 0) {
-        osdRefresh(currentTimeUs);
-        showVisualBeeper = false;
-    } else if (counter % DRAW_FREQ_PRIO_DENOM == 0) {
-        osdRefreshPriorized(currentTimeUs);
-    }
+    // Hide OSD when OSDSW mode is active
+    if (IS_RC_MODE_ACTIVE(BOXOSD)) {
+        displayClearScreen(osdDisplayPort);
+    } else {
 
-    displayDrawScreen(osdDisplayPort);
-    ++counter;
+        if (counter % DRAW_FREQ_DENOM == 0) {
+            osdHandleCMS(currentTimeUs);
+            osdRefresh(currentTimeUs);
+            showVisualBeeper = false;
+        }
+        
+        if (counter % DRAW_FREQ_PRIO_DENOM == 0) {
+            if(!resumeRefreshAt)
+                osdDrawElementsPriorized();
+        }
+
+        displayDrawScreen(osdDisplayPort);
+        ++counter;
+    }
 
 #ifdef USE_CMS
     // do not allow ARM if we are in menu

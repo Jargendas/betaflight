@@ -221,6 +221,7 @@ CFLAGS     += $(ARCH_FLAGS) \
               -D'__REVISION__="$(REVISION)"' \
               -save-temps=obj \
               -MMD -MP \
+			  -C
               $(EXTRA_FLAGS)
 
 ASFLAGS     = $(ARCH_FLAGS) \
